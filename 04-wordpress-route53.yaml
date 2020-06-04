@@ -1,0 +1,47 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack to create Route53
+
+Metadata:
+
+   Authors:
+    Description: https://github.com/lzrocha
+    
+   AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Route 53 Parameters
+      Parameters:
+        - WPDomainName
+        - DnsEndpoint
+    ParameterLabels:
+      DnsEndpoint:
+        default: DNS Endpoint
+      WPDomainName:
+        default: Site Domain
+        
+Parameters:
+
+  DnsEndpoint:
+    AllowedPattern: ^(?!http)(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: The DNS endpoint - CloudFront DNS if using CloudFront else Public ELB DNS name.
+    Type: String
+  WPDomainName:
+    AllowedPattern: ^(?!http)(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: The main domain name of the WordPress site (e.g. example.com).
+    Type: String
+    
+Resources:
+
+  RecordSet:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: !Join ['', [!Ref WPDomainName, '.']]
+      RecordSets:
+      - Name: !Join ['', [ !Ref WPDomainName, '.']]
+        Type: A
+        AliasTarget:
+          DNSName: !Ref DnsEndpoint
+          EvaluateTargetHealth: True
+          HostedZoneId: 'Z2FDTNDATAQYW2'
