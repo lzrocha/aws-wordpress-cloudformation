@@ -1,0 +1,443 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack to deploy Webservers
+
+Metadata:
+ Authors:
+  Description: https://github.com/lzrocha
+  
+ AWS::CloudFormation::Interface:
+
+    ParameterGroups:
+    - Label:
+        default: Web Parameters
+      Parameters:
+        - KeyName
+        - EC2Size
+        - WebAsgMax
+        - WebAsgMin
+        - WebServerSecurityGroup
+        - NumberOfSubnets
+        - Subnet
+        - PublicAlbTargetGroup
+    - Label:
+        default: WordPress Parameters
+      Parameters:
+        #- WPVersion
+        #- WPTitle
+        - WPDomainName
+        #- WPDirectory
+        #- WPAdminUsername
+        #- WPAdminPassword
+        #- WPAdminEmail
+        #- WPLocale
+    - Label:
+        default: Database Parameters
+      Parameters:
+        - DBEndpointAddress
+        - DatabaseName
+        - DatabaseUser
+        - DatabasePassword
+    - Label:
+        default: File System Parameters
+      Parameters:
+        - ElasticFileSystem
+    ParameterLabels:
+      DBEndpointAddress:
+        default: DB Cluster Endpoint Address
+      DatabaseUser:
+        default: DB Master Username  
+      DatabasePassword:
+        default: DB Master Password
+      DatabaseName:
+        default: DB Name
+      ElasticFileSystem:
+        default: EFS File System
+      KeyName:
+        default: Existing Key Pair
+      NumberOfSubnets:
+        default: Number of subnets
+      PublicAlbTargetGroup:
+        default: Public Alb Target Group Arn
+      Subnet:
+        default: Subnets
+      WebAsgMax:
+        default: Web ASG Max
+      WebAsgMin:
+        default: Web ASG Min
+      EC2Size:
+        default: Web Instance Type
+      WebServerSecurityGroup:
+        default: Web Security Group
+      #WPAdminEmail:
+        #default: Admin Email
+      #WPAdminPassword:
+        #default: Admin Password
+      #WPAdminUsername:
+        #default: Admin Username
+      #WPDirectory:
+        #default: Site Directory
+      WPDomainName:
+        default: Site Domain
+      #WPLocale:
+       # default: Language Code
+      #WPTitle:
+       # default: Site Title
+      #WPVersion:
+       # default: WordPress Version
+      
+Parameters:
+  DBEndpointAddress:
+    Description: The RDS cluster endpoint address.
+    Type: String
+  DatabaseUser:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master username.
+    ConstraintDescription: Must contain only alphanumeric characters and be at least 8 characters.
+    MaxLength: 16
+    MinLength: 1
+    Type: String
+  DatabasePassword:
+    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-
+    Description: The Amazon RDS master password.
+    MaxLength: 41
+    MinLength: 8
+    NoEcho: true
+    Type: String
+  DatabaseName:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master database name.
+    Type: String
+  ElasticFileSystem:
+    AllowedPattern: ^(fs-)([a-z0-9]{8})$
+    Description: The Amazon EFS file system id.
+    Type: String
+  KeyName:
+    AllowedPattern: ^([a-zA-Z0-9 @.`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and special characters.
+    Description: Name of an EC2 KeyPair
+    Type: AWS::EC2::KeyPair::KeyName
+  NumberOfSubnets:
+    AllowedValues:
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    Default: 3
+    Description: Number of subnets. This must match your selections in the list of subnets below.
+    Type: String 
+  PublicAlbTargetGroup:
+    Description: The public application load balancer target group arn.
+    Type: String
+  Subnet:
+    Description: Select existing subnets. The number selected must match the number of subnets above. Subnets selected must be in separate AZs.
+    Type: List<AWS::EC2::Subnet::Id>
+  WebAsgMax:
+    AllowedPattern: ^((?!0$)[1-2]?[0-9]|30)$
+    ConstraintDescription: Must be a number between 1 and 30.
+    Default: 4
+    Description: Specifies the maximum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebAsgMin:
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 0 and 10.
+    Default: 2
+    Description: Specifies the minimum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  EC2Size:
+    AllowedValues:
+        - t2.micro 
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: t2.micro
+    Description: The Amazon EC2 instance type for your web instances.
+    Type: String
+  WebServerSecurityGroup:
+    Description: Select the web security group.
+    Type: AWS::EC2::SecurityGroup::Id
+  #WPAdminEmail:
+   # AllowedPattern: ^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$
+    #Description: The WordPress admin email address.
+    #Type: String
+  #WPAdminPassword:
+   # AllowedPattern: ^([a-zA-Z0-9`~!#$%^&*()_+,\\-])*$
+    #ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-   
+    #Description: The WordPress admin password.
+    #Type: String
+    #NoEcho: true
+  #WPAdminUsername:
+   # AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    #Description: The WordPress admin username.
+    #Type: String
+  #WPDirectory:
+   # AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    #Description: The WordPress site directory.
+    #Type: String
+  WPDomainName:
+    AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: '[ Optional ] The main domain name of the WordPress site (e.g. example.com). Leave empty to use the ALB DNS name for the WordPress site.'
+    Type: String
+  #WPLocale:
+   # Description: The main language of the WordPress site, as per https://codex.WordPress.org/Installing_WordPress_in_Your_Language. The default is 'en_GB'.
+    #Type: String
+    #Default: en_GB
+  #WPTitle:
+   # AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9 _-]*)([a-zA-Z0-9])$
+    #Description: The WordPress website title.
+    #Type: String
+  #WPVersion:
+   # AllowedValues:
+    #  - latest
+     # - nightly
+      #- 4.5
+      #- 4.6
+      #- 4.7
+      #- 4.8
+      #- 4.9
+    #Default: latest
+    #Description: The WordPress version (make sure this version is compatible with the PHP version selected above).
+    #Type: String
+    
+Mappings:
+    RegionMap:
+      us-east-1: #N.Virginia
+        AMALINUX: ami-0e2ff28bfb72a4e45
+      us-east-2: #Ohio
+        AMALINUX: ami-0998bf58313ab53da
+      us-west-1: #N.California
+        AMALINUX: ami-021bb9f371690f97a
+      us-west-2: #Oregon
+        AMALINUX: ami-079f731edfe27c29c
+      ap-south-1: #Mumbai
+        AMALINUX: ami-05695932c5299858a
+      ap-southeast-1: #Singapore
+        AMALINUX: ami-043afc2b8b6cfba5c
+      ap-southeast-2: #Sydney
+        AMALINUX: ami-01393ce9a3ca55d67
+      ap-northeast-1: #Tokyo
+        AMALINUX: ami-02ddf94e5edc8e904
+      ap-northeast-2: #Seoul
+        AMALINUX: ami-0ecd78c22823e02ef
+      ca-central-1: #Canada
+        AMALINUX: ami-0fa94ecf2fef3420b
+      eu-central-1: #Frankfurt
+        AMALINUX: ami-0ba441bdd9e494102
+      eu-west-1: #Ireland
+        AMALINUX: ami-0e61341fa75fcaa18
+      eu-west-2: #London
+        AMALINUX: ami-050b8344d77081f4b
+      eu-west-3: #Paris
+        AMALINUX: ami-053418e626d0549fc
+      cn-north-1: #Stockholm
+        AMALINUX: ami-01a7a49829bda9d79
+      sa-east-1: #Sao Paulo
+        AMALINUX: ami-05b7dbc290217250d
+    
+Conditions:
+  
+  NumberOfSubnets1:
+      !Equals [ 1, !Ref NumberOfSubnets ]
+  NumberOfSubnets2:
+      !Equals [ 2, !Ref NumberOfSubnets ]
+  NumberOfSubnets3:
+      !Equals [ 3, !Ref NumberOfSubnets ]
+  NumberOfSubnets4:
+      !Equals [ 4, !Ref NumberOfSubnets ]
+  NumberOfSubnets5:
+      !Equals [ 5, !Ref NumberOfSubnets ]
+  NumberOfSubnets6:
+      !Equals [ 6, !Ref NumberOfSubnets ]
+  Subnet0: !Or
+    - !Condition NumberOfSubnets1
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet1: !Or
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet2: !Or
+    - !Condition NumberOfSubnets3
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet3: !Or
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet4: !Or
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet5: !Condition NumberOfSubnets6
+  
+Resources:
+  RootInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref S3WritableRole
+  S3WritableRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Path: /
+        
+  WebServerGroup:
+      Type: AWS::AutoScaling::AutoScalingGroup
+      Properties:
+        VPCZoneIdentifier: !Ref Subnet
+        LaunchConfigurationName: !Ref LaunchConfig
+        MaxSize: !Ref WebAsgMax
+        MinSize: !Ref WebAsgMin   
+        TargetGroupARNs:
+          - !Ref PublicAlbTargetGroup
+      CreationPolicy:
+        ResourceSignal:
+          Count: !Ref WebAsgMin
+          Timeout: PT15M
+      UpdatePolicy:
+        AutoScalingRollingUpdate:
+          MinInstancesInService: '1'
+          MaxBatchSize: '1'
+          PauseTime: PT15M
+          WaitOnResourceSignals: 'true'
+
+  LaunchConfig:
+      Type: AWS::AutoScaling::LaunchConfiguration
+      Metadata:
+        'AWS::CloudFormation::Init':
+          configSets:
+            wordpress:
+              - "configure_cfn"
+              - "install_wordpress"
+              - "config_wordpress"
+          configure_cfn:
+            files:
+              /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+                content: !Sub |
+                  [cfn-auto-reloader-hook]
+                  triggers=post.update
+                  path=Resources.LaunchConfig.Metadata.AWS::CloudFormation::Init
+                  action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource LaunchConfig --configsets wordpress --region ${AWS::Region}
+                mode: "000400"
+                owner: root
+                group: root
+              /etc/cfn/cfn-hup.conf:
+                content: !Sub |
+                  [main]
+                  stack=${AWS::StackId}
+                  region=${AWS::Region}
+                  verbose=true
+                  interval=5
+                mode: "000400"
+                owner: root
+                group: root
+            services:
+              sysvinit:
+                cfn-hup:
+                  enabled: "true"
+                  ensureRunning: "true"
+                  files:
+                    - "/etc/cfn/cfn-hup.conf"
+                    - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+          install_wordpress:
+            packages:
+              yum:
+                httpd24: []
+                php70: []
+                mysql: []
+                php70-mysqlnd: []
+            sources:
+              /var/www/html: "http://wordpress.org/latest.tar.gz"
+            services:
+              sysvinit:
+                httpd:
+                  enabled: "true"
+                  ensureRunning: "true"
+          config_wordpress:
+            commands:
+              01_clone_config:
+                cwd: "/var/www/html"
+                command: !Sub |
+                    cd /var/www/html
+                    cp -r wordpress/* /var/www/html/
+                    rm -rf wordpress
+                    rm -rf latest.tar.gz
+                    cp wp-config-sample.php wp-config.php
+              02_inject_dbhost:
+                cwd: "/var/www/html"
+                command: !Sub |
+                  sed -i 's/localhost/${DBEndpointAddress}/g' wp-config.php
+              03_inject_dbname:
+                cwd: "/var/www/html"
+                command: !Sub |
+                  sed -i 's/database_name_here/${DatabaseName}/g' wp-config.php
+              04_inject_dbuser:
+                cwd: "/var/www/html"
+                command: !Sub |
+                  sed -i 's/username_here/${DatabaseUser}/g' wp-config.php
+              05_inject_dbpassword:
+                cwd: "/var/www/html"
+                command: !Sub |
+                  sed -i 's/password_here/${DatabasePassword}/g' wp-config.php
+              06_wordpress_permissions:
+                cwd: "/var/www/html"
+                command: !Sub |
+                  chmod -R 755 wp-content
+                  chown -R apache:apache wp-content
+                  chown -R apache /var/www
+                  chgrp -R apache /var/www           
+                  service httpd restart
+              07_inject_sslconnection:
+                cwd: "/var/www/html"
+                command: !Sub |
+                  cd /var/www/html
+                  sed -i "15s#.*#*/#" wp-config.php
+                  sed -i "16s#.*#define('WP_HOME','https://www.luizfel.com');#" wp-config.php
+                  sed -i "17s#.*#define('WP_SITEURL','https://www.luizfel.com');#" wp-config.php
+                  sed -i "18s#.*#if (strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false)#" wp-config.php
+                  sed -i "19s#.*#       \$_SERVER['HTTPS']='on';#" wp-config.php
+              08_wordpress_plugins:
+                cwd: "/bin"
+                command: !Sub |
+                    !/bin/bash -xe
+                    curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+                    chmod +x wp-cli.phar
+                    mv wp-cli.phar /bin/wp
+                    chmod +x /bin/wp
+                    wp plugin install amazon-s3-and-cloudfront --version=2.2.1 --allow-root --path=/var/www/html
+                    wp plugin activate amazon-s3-and-cloudfront --allow-root --path=/var/www/html
+      Properties:
+        IamInstanceProfile: !Ref RootInstanceProfile
+        ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX]
+        InstanceType: !Ref EC2Size
+        SecurityGroups:
+          - !Ref WebServerSecurityGroup
+        KeyName: !Ref KeyName
+        UserData:
+          "Fn::Base64":
+            !Sub |
+              #!/bin/bash
+              yum update -y aws-cfn-bootstrap
+              sudo yum install -y amazon-efs-utils
+              mkdir -p /var/www/html
+              mount -t efs ${ElasticFileSystem}.efs.${AWS::Region}.amazonaws.com:/ /var/www/html         
+              /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource LaunchConfig --configsets wordpress --region ${AWS::Region}
+              yum -y update
+              /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServerGroup --region ${AWS::Region}
+  
