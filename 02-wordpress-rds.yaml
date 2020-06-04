@@ -1,0 +1,141 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack to deploy RDS
+
+Metadata:
+ Authors:
+  Description: https://github.com/lzrocha
+  
+ AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label: 
+         default: Database Configuration
+      Parameters: 
+        - VpcId
+        - PrivateSubnet1
+        - PrivateSubnet2
+        - DatabaseName
+        - DatabaseUser
+        - DatabasePassword
+        - DatabaseSecurityGroup
+        - DBSize
+        - MultiAvailabilityZone
+    ParameterLabels:
+      VpcId:
+        default: Vpc Id
+      DBSize:
+        default: Database Instance Type
+      DatabaseName:
+        default: Database Name
+      DatabaseUser:
+        default: Database User
+      DatabasePassword:
+        default: Database Password
+      DatabaseSecurityGroup:
+        default: Database Security Group
+      MultiAvailabilityZone:
+        default: Multi Availability Zone
+      PrivateSubnet1:
+        default: Private Subnet 1
+      PrivateSubnet2:
+        default: Private Subnet 2
+        
+Parameters:
+
+    DatabaseSecurityGroup:
+        Description: Select the Database security group.
+        Type: AWS::EC2::SecurityGroup::Id 
+    PrivateSubnet1:
+        Description: DB Private Subnet 1
+        Type: AWS::EC2::Subnet::Id
+    PrivateSubnet2:
+        Description: DB Private Subnet 2
+        Type: AWS::EC2::Subnet::Id
+    MultiAvailabilityZone:
+        Description: Enable Multi Availability Zones?
+        Type: String
+        Default: 'false'
+        AllowedValues:
+        - 'true'
+        - 'false'
+    DatabaseName:
+        Description: The Amazon RDS master database name.
+        AllowedPattern: ^([a-zA-Z0-9]*)$
+        Type: String
+    DatabaseUser:
+        AllowedPattern: ^([a-zA-Z0-9]*)$
+        Description: The Amazon RDS master username.
+        ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
+        MaxLength: 16
+        MinLength: 8
+        Type: String
+    DatabasePassword:
+        AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+        ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,   
+        Description: The Amazon RDS master password.
+        MaxLength: 41
+        MinLength: 8
+        NoEcho: true
+        Type: String
+    DBSize:
+        Type: String
+        Default: db.t2.micro
+        AllowedValues:
+         - db.t2.micro
+        Description: Database instance class
+        ConstraintDescription: Only Free Tier Available
+    VpcId:
+        AllowedPattern: ^(vpc-)([a-z0-9]{8}|[a-z0-9]{17})$
+        Description: The Vpc Id of an existing Vpc.
+        Type: AWS::EC2::VPC::Id
+        ConstraintDescription: must be the VPC Id of an existing Virtual Private Cloud.
+        
+Resources:
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: mySubnetgroup
+      DBSubnetGroupDescription:
+        Fn::Join:
+        - ''
+        - - 'RDS Subnet Group for '
+          - Ref: AWS::StackName
+      SubnetIds:
+      - Ref: PrivateSubnet1
+      - Ref: PrivateSubnet2
+        
+  DB:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+        AllocatedStorage: 5
+        StorageType: gp2
+        DBInstanceClass: !Ref DBSize
+        DBName: !Ref DatabaseName
+        Engine: MySQL
+        MasterUsername: !Ref DatabaseUser
+        MasterUserPassword: !Ref DatabasePassword
+        VPCSecurityGroups:
+            - !Ref DatabaseSecurityGroup
+        DBSubnetGroupName: !Ref DbSubnetGroup
+        MultiAZ: !Ref MultiAvailabilityZone
+    DependsOn:
+        - DbSubnetGroup
+        
+Outputs:
+  DBSize:
+    Value: !Ref DBSize
+  DatabaseName:
+    Value: !Ref DatabaseName
+  DatabaseUser:
+    Value: !Ref DatabaseUser
+  DatabasePassword:
+    Value: !Ref DatabasePassword
+  DbSubnetGroup:
+    Value: !Ref DbSubnetGroup
+  DatabaseName:
+    Value: !Ref DatabaseName
+  DBEndpointAddress:
+    Value: !GetAtt DB.Endpoint.Address
