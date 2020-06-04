@@ -1,6 +1,6 @@
 # Hosting WordPress on AWS
 
-Stack to deploy a highly available, scalable, and fault-tolerant WordPress environment using CloudFormation (AWS Free Tier resources only). Based on [WordPress: Best Practices on AWS.](https://aws.amazon.com/blogs/architecture/wordpress-best-practices-on-aws/)
+Stack to deploy a highly available, scalable, and fault-tolerant WordPress environment using CloudFormation (AWS Free Tier resources default). Based on [WordPress: Best Practices on AWS.](https://aws.amazon.com/blogs/architecture/wordpress-best-practices-on-aws/)
 
 Version 0.5.1 :satellite:
 
