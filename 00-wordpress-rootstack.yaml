@@ -1,0 +1,336 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: Stack to deploy WORDPRESS in multiple nested stacks
+
+Metadata:
+
+   Authors:
+    Description: https://github.com/lzrocha
+
+   AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: General AWS
+      Parameters:
+        - KeyName
+        - SSHLocation
+        - WPDomainName
+        - S3Bucket
+    - Label:
+        default: Network
+      Parameters:
+        - VpcId
+        - Subnet
+        - NumberOfSubnets
+    - Label:
+        default: File System Tier
+      Parameters:
+        - PerformanceMode
+    - Label:
+        default: Database Tier
+      Parameters:
+        - DBSize
+        - DatabaseUser
+        - DatabasePassword
+        - DatabaseName
+        - MultiAvailabilityZone
+        - PrivateSubnet1
+        - PrivateSubnet2
+    - Label:
+        default: Web Tier
+      Parameters:
+        - CloudFrontAcmCertificate
+        - PublicAlbAcmCertificate
+        - EC2Size
+        - WebAsgMax
+        - WebAsgMin
+    ParameterLabels:
+      CloudFrontAcmCertificate:
+        default: CloudFront Certificate ARN
+      DBSize:
+        default: DB Instance Class
+      DatabaseUsername:
+        default: DB Master Username
+      DatabasePassword:
+        default: DB Master Password
+      DatabaseName:
+        default: DB Name
+      MultiAvailabilityZone:
+        default: Multi Availability Zone
+      PerformanceMode:
+        default: EFS Performance Mode
+      PrivateSubnet1:
+        default: Database Private subnet 1
+      PrivateSubnet2:
+        default: Database Private subnet 2
+      KeyName:
+        default: EC2 Key Pair
+      PublicAlbAcmCertificate:
+        default: ALB Certificate ARN
+      SSHLocation:
+        default: SSH Access From
+      WebAsgMax:
+        default: Web ASG Max
+      WebAsgMin:
+        default: Web ASG Min
+      EC2Size:
+        default: Web Tier Instance Type
+      WPDomainName:
+        default: Site Domain
+      NumberOfSubnets:
+        default: Number of Subnets
+      VpcId:
+        default: Vpc Id
+      Subnet:
+        default: Subnets
+      S3Bucket:
+        default: S3 Bucket for offload media
+        
+Parameters:
+    CloudFrontAcmCertificate:
+        AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
+        Description: '[ Optional ] The AWS Certification Manager certificate ARN for the CloudFront distribution certificate - this certificate should be created in the us-east-1 (N. Virginia) region and must reference the WordPress domain name you use below.'
+        Type: String
+    SSHLocation:
+        Description: The IP address range that can be used to SSH to the EC2 instances. Note - a value of 0.0.0.0/0 will allow access from ANY IP address.
+        Type: String
+        MinLength: '9'
+        MaxLength: '18'
+        Default: 0.0.0.0/0
+        AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
+        ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+    KeyName:
+        ConstraintDescription: Must be letters (upper or lower), numbers, and special characters.
+        Description: Name of an EC2 KeyPair. Your bastion & Web instances will launch with this KeyPair.
+        Type: AWS::EC2::KeyPair::KeyName
+    VpcId:
+        Description: The Vpc Id of an existing Vpc.
+        Type: AWS::EC2::VPC::Id
+        ConstraintDescription: must be the VPC Id of an existing Virtual Private Cloud.
+    Subnet:
+        Description: The Subnet ID of existing subnets.
+        Type: List<AWS::EC2::Subnet::Id>
+        ConstraintDescription: It is recommended to include all available subnets.
+    NumberOfSubnets:
+        AllowedValues:
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        Default: 3
+        Description: Number of subnets. This must match your selections in the list of Subnets below.
+        Type: String 
+    PerformanceMode:
+        AllowedValues:
+          - generalPurpose
+          - maxIO
+        Default: generalPurpose
+        Description: Select the performance mode of the file system.
+        Type: String   
+    PrivateSubnet1:
+        Description: DB Private Subnet 1
+        Type: AWS::EC2::Subnet::Id
+    PrivateSubnet2:
+        Description: DB Private Subnet 2
+        Type: AWS::EC2::Subnet::Id
+    MultiAvailabilityZone:
+        Description: Enable Multi Availability Zones?
+        Type: String
+        Default: 'false'
+        AllowedValues:
+        - 'true'
+        - 'false'
+    DatabaseName:
+        Description: The Amazon RDS master database name.
+        AllowedPattern: ^([a-zA-Z0-9]*)$
+        Type: String
+    DatabaseUser:
+        AllowedPattern: ^([a-zA-Z0-9]*)$
+        Description: The Amazon RDS master username.
+        ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
+        MaxLength: 16
+        MinLength: 8
+        Type: String
+    DatabasePassword:
+        AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+        ConstraintDescription: Must be letters (upper or lower), numbers, spaces, and these special characters `~!#$%^&*()_+,-
+        Description: The Amazon RDS master password.
+        MaxLength: 41
+        MinLength: 8
+        NoEcho: true
+        Type: String
+    DBSize:
+        Type: String
+        Default: db.t2.micro
+        AllowedValues:
+         - db.t2.micro
+        Description: Database instance class
+        ConstraintDescription: Only Free Tier Available
+    PublicAlbAcmCertificate:
+        AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
+        Description: ' The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+        Type: String
+    WebAsgMax:
+        AllowedPattern: ^((?!0$)[1-2]?[0-9]|30)$
+        ConstraintDescription: Must be a number between 1 and 30.
+        Default: 4
+        Description: Specifies the maximum number of EC2 instances in the Web Autoscaling Group.
+        Type: String
+    WebAsgMin:
+        AllowedPattern: ^([0-0]?[0-9]|10)$
+        ConstraintDescription: Must be a number between 0 and 10.
+        Default: 2
+        Description: Specifies the minimum number of EC2 instances in the Web Autoscaling Group.
+        Type: String
+    EC2Size:
+        AllowedValues:
+            - t2.micro 
+        ConstraintDescription: Must be a valid Amazon EC2 instance type.
+        Default: t2.micro 
+        Description: The Amazon EC2 instance type for your web instances.
+        Type: String
+    WPDomainName:
+        AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+        Description: 'The main domain name of the WordPress site (e.g. example.com).'
+        Type: String
+    S3Bucket:
+        Description: S3Bucket Name to offload static assets
+        Type: String
+      
+Resources:
+
+  SG:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        SSHLocation:
+          !Ref SSHLocation
+        VpcId:
+          !Ref VpcId
+      TemplateURL: https://wp-cf-project.s3-ap-southeast-2.amazonaws.com/01-wordpress-securitygroups.yaml
+        
+  EFS:
+    DependsOn: SG
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        EfsSecurityGroup:
+          !GetAtt [ SG, Outputs.EfsSecurityGroup ]
+        NumberOfSubnets:
+          !Ref NumberOfSubnets  
+        PerformanceMode:
+          !Ref PerformanceMode
+        Subnet:
+          !Join [ ',', !Ref Subnet]
+        VpcId:
+          !Ref VpcId
+      TemplateURL: https://wp-cf-project.s3-ap-southeast-2.amazonaws.com/02-wordpress-efs.yaml
+      
+  DB:
+    DependsOn: SG
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        DBSize:
+          !Ref DBSize
+        DatabaseUser:
+          !Ref DatabaseUser
+        DatabasePassword:
+          !Ref DatabasePassword
+        DatabaseName:
+          !Ref DatabaseName
+        DatabaseSecurityGroup:
+          !GetAtt [ SG, Outputs.DatabaseSecurityGroup ]
+        PrivateSubnet1:
+          !Ref PrivateSubnet1
+        PrivateSubnet2:
+          !Ref PrivateSubnet2
+        MultiAvailabilityZone:
+          !Ref MultiAvailabilityZone
+        VpcId:
+          !Ref VpcId
+      TemplateURL: https://wp-cf-project.s3-ap-southeast-2.amazonaws.com/02-wordpress-rds.yaml
+      
+  ALB:
+    DependsOn: SG
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        NumberOfSubnets:
+          !Ref NumberOfSubnets
+        Subnet:
+          !Join [ ',', !Ref Subnet]
+        PublicAlbAcmCertificate:
+          !Ref PublicAlbAcmCertificate
+        PublicAlbSecurityGroup:
+          !GetAtt [ SG, Outputs.PublicAlbSecurityGroup ]
+        VpcId:
+          !Ref VpcId
+      TemplateURL: https://wp-cf-project.s3-ap-southeast-2.amazonaws.com/02-wordpress-alb.yaml
+      
+  EC2:
+    DependsOn: [ ALB, DB, EFS ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        DBEndpointAddress:
+          !GetAtt [ DB, Outputs.DBEndpointAddress ]
+        DatabaseUser:
+          !Ref DatabaseUser
+        DatabasePassword:
+          !Ref DatabasePassword
+        DatabaseName:
+          !Ref DatabaseName
+        ElasticFileSystem:
+          !GetAtt [ EFS, Outputs.ElasticFileSystem ]
+        KeyName:
+          !Ref KeyName
+        NumberOfSubnets:
+          !Ref NumberOfSubnets
+        PublicAlbTargetGroup:
+          !GetAtt [ ALB, Outputs.PublicAlbTargetGroup ]
+        WebAsgMax:
+          !Ref WebAsgMax
+        WebAsgMin:
+          !Ref WebAsgMin
+        EC2Size:
+          !Ref EC2Size
+        WebServerSecurityGroup:
+          !GetAtt [ SG, Outputs.WebServerSecurityGroup ]
+        Subnet:
+          !Join [ ',', !Ref Subnet]
+        WPDomainName:
+          !Ref WPDomainName
+      TemplateURL: https://wp-cf-project.s3-ap-southeast-2.amazonaws.com/03-wordpress-web.yaml
+      
+  CLOUDFRONT:
+    DependsOn: ALB
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        CloudFrontAcmCertificate:
+          !Ref CloudFrontAcmCertificate
+        PublicAlbDnsName:
+          !GetAtt [ ALB, Outputs.PublicAlbDnsName ]
+        WPDomainName:
+          !Ref WPDomainName
+        S3Bucket:
+          !Ref S3Bucket
+      TemplateURL: https://wp-cf-project.s3-ap-southeast-2.amazonaws.com/03-wordpress-cloudfront.yaml
+      
+  R53:
+    DependsOn: CLOUDFRONT
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        DnsEndpoint:
+          !GetAtt [ CLOUDFRONT, Outputs.DnsEndpoint ]
+        WPDomainName:
+          !Ref WPDomainName
+      TemplateURL: https://wp-cf-project.s3-ap-southeast-2.amazonaws.com/04-wordpress-route53.yaml
+      
+Outputs:
+  WPSiteUrl:
+    Description: The URL of the WordPress site
+    Value: !Join [ '', [ 'http://www.', !Ref WPDomainName ] ]
